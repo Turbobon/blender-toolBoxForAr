@@ -60,7 +60,7 @@ def update_ifc_output(self, context):
         context.scene.ar_ifc_output_path = name + "_id" + ext
 
 ## 用ElementId改變物件名稱(主邏輯)
-def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path):
+def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
     ifc = ifcopenshell.open(file_path)
     listType = ['IfcColumn', 'IfcCurtainWall', 'IfcWall', 'IfcWallStandardCase',
                     'IfcFlowFitting', 'IfcFlowSegment', 'IfcFlowTerminal',
@@ -70,7 +70,7 @@ def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path):
                     'IfcMember', 'IfcCovering']
     for type_name in listType:
         for ele in ifc.by_type(type_name):
-            ele.Name = ele.Tag
+            ele.Name = f'{prefix}_{ele.Tag}'
     ifc.write(output_path)
 
 ## Buttom [匯出以ElementId命名的IFC]
@@ -100,8 +100,10 @@ class OBJECT_OT_rename_ifc_elements(bpy.types.Operator):
         export_file_name = outtput_file_path_without_ext + file_ext
         context.scene.ar_ifc_output_path = export_file_name
 
-
-        name_ifc_elements_by_tag(ifcopenshell, file_path, export_file_name)
+        prefix = context.scene.ar_ifc_prefix.strip()
+        if not prefix:
+            prefix = ''
+        name_ifc_elements_by_tag(ifcopenshell, file_path, export_file_name, prefix)
 
         self.report({'INFO'}, f"已產出新 IFC：{export_file_name}")
         return {'FINISHED'}
@@ -123,22 +125,23 @@ class OBJECT_OT_batch_rename_ifc_folder(bpy.types.Operator):
             self.report({'ERROR'}, "資料夾路徑無效")
             return {'CANCELLED'}
 
-        output_folder = folder_path.rstrip(os.sep) + "_ID"
-        os.makedirs(output_folder, exist_ok=True)
-
         count = 0
-        for file in os.listdir(folder_path):
-            if file.lower().endswith(".ifc"):
-                input_path = os.path.join(folder_path, file)
-                output_path = os.path.join(output_folder, os.path.splitext(file)[0] + "_id.ifc")
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                if file.lower().endswith(".ifc"):
+                    input_path = os.path.join(root, file)
 
-                try:
-                    name_ifc_elements_by_tag(ifcopenshell, input_path, output_path)
-                    count += 1
-                except Exception as e:
-                    self.report({'WARNING'}, f"{file} 轉換失敗：{e}")
+                    # 輸出路徑設為同一資料夾中，加上 _id
+                    output_path = os.path.join(root, os.path.splitext(file)[0] + "_id.ifc")
 
-        self.report({'INFO'}, f"已處理 {count} 個 IFC 檔案，輸出至：{output_folder}")
+                    try:
+                        prefix = os.path.splitext(file)[0]
+                        name_ifc_elements_by_tag(ifcopenshell, input_path, output_path, prefix)
+                        count += 1
+                    except Exception as e:
+                        self.report({'WARNING'}, f"{file} 轉換失敗：{e}")
+
+        self.report({'INFO'}, f"已處理 {count} 個 IFC 檔案，輸出至原資料夾中")
         return {'FINISHED'}
 
 # ========== AR UTILITIES TOOL ==========
@@ -363,6 +366,7 @@ class OBJECT_PT_rename_ifc(bpy.types.Panel):
         layout.label(text="IFC Name by ElementId")
         layout.prop(context.scene, "ar_ifc_input_path")
         layout.prop(context.scene, "ar_ifc_output_path")
+        layout.prop(context.scene, "ar_ifc_prefix")
         layout.operator("object.rename_ifc_elements", icon='FILE_REFRESH')
         layout.separator()
         layout.label(text="Named IFCs in Folder")
@@ -471,6 +475,11 @@ def register():
         name="Output",
         subtype='FILE_PATH',
     )
+    bpy.types.Scene.ar_ifc_prefix = bpy.props.StringProperty(
+    name="Prefix",
+    description="Prefix for renaming elements",
+    default=""
+    )
     bpy.types.Scene.ar_ifc_folder_path = bpy.props.StringProperty(
         name="Folder",
         subtype='FILE_PATH',
@@ -514,6 +523,7 @@ def unregister():
     del bpy.types.Scene.ar_z_rotation_angle
     del bpy.types.Scene.ar_ifc_input_path
     del bpy.types.Scene.ar_ifc_output_path
+    del bpy.types.Scene.ar_ifc_prefix
     del bpy.types.Scene.ar_ifc_folder_path
     del bpy.types.Scene.rename_mesh_data
     del bpy.types.Scene.assign_default_material
