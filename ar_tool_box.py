@@ -1,6 +1,6 @@
 bl_info = {
     "name": "AR Tool Box",
-    "author": "YourName",
+    "author": "Bimfm_Annie Sung",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "View3D > Sidebar > AR Tool Box",
@@ -61,6 +61,8 @@ def update_ifc_output(self, context):
 
 ## 用ElementId改變物件名稱(主邏輯)
 def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
+    if prefix != '':
+        prefix = f'_{prefix}'
     ifc = ifcopenshell.open(file_path)
     listType = ['IfcColumn', 'IfcCurtainWall', 'IfcWall', 'IfcWallStandardCase',
                     'IfcFlowFitting', 'IfcFlowSegment', 'IfcFlowTerminal',
@@ -124,7 +126,8 @@ class OBJECT_OT_batch_rename_ifc_folder(bpy.types.Operator):
         if not os.path.isdir(folder_path):
             self.report({'ERROR'}, "資料夾路徑無效")
             return {'CANCELLED'}
-
+        
+        use_prefix = context.scene.use_filename_as_prefix
         count = 0
         for root, dirs, files in os.walk(folder_path):
             for file in files:
@@ -135,7 +138,7 @@ class OBJECT_OT_batch_rename_ifc_folder(bpy.types.Operator):
                     output_path = os.path.join(root, os.path.splitext(file)[0] + "_id.ifc")
 
                     try:
-                        prefix = os.path.splitext(file)[0]
+                        prefix = os.path.splitext(file)[0] if use_prefix else ""
                         name_ifc_elements_by_tag(ifcopenshell, input_path, output_path, prefix)
                         count += 1
                     except Exception as e:
@@ -371,6 +374,7 @@ class OBJECT_PT_rename_ifc(bpy.types.Panel):
         layout.separator()
         layout.label(text="Named IFCs in Folder")
         layout.prop(context.scene, "ar_ifc_folder_path")
+        layout.prop(context.scene, "use_filename_as_prefix")
         layout.operator("object.batch_rename_ifc_folder", icon='FILE_REFRESH')
 
 # ========== Z ROTATION UI PANEL ==========
@@ -480,6 +484,11 @@ def register():
     description="Prefix for renaming elements",
     default=""
     )
+    bpy.types.Scene.use_filename_as_prefix = bpy.props.BoolProperty(
+    name="Use FileName as Prefix",
+    description="Use IFC FileName as Elements Prefix",
+    default=True
+    )
     bpy.types.Scene.ar_ifc_folder_path = bpy.props.StringProperty(
         name="Folder",
         subtype='FILE_PATH',
@@ -525,6 +534,7 @@ def unregister():
     del bpy.types.Scene.ar_ifc_output_path
     del bpy.types.Scene.ar_ifc_prefix
     del bpy.types.Scene.ar_ifc_folder_path
+    del bpy.types.Scene.use_filename_as_prefix
     del bpy.types.Scene.rename_mesh_data
     del bpy.types.Scene.assign_default_material
     del bpy.types.Scene.set_material_to_blend
