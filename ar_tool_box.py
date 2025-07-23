@@ -304,13 +304,20 @@ class OBJECT_OT_export_model(bpy.types.Operator):
         if not blend_path:
             self.report({'ERROR'}, "請先儲存 .blend 檔案才能匯出")
             return {'CANCELLED'}
+        
+        originalname = bpy.path.display_name_from_filepath(blend_path)
 
-        filename = bpy.path.display_name_from_filepath(blend_path)
+        if context.scene.export_filename.strip() != '':
+            filename = context.scene.export_filename.strip()
+        else:
+            filename = originalname
         base_dir = os.path.dirname(blend_path)
 
         # 建立目錄
         main_dir = os.path.join(base_dir, filename)
-        gltf_dir = os.path.join(main_dir, f"{filename}_gltf")
+        name_dir = os.path.join(main_dir, originalname)
+        os.makedirs(name_dir, exist_ok=True)
+        gltf_dir = os.path.join(main_dir, f"{filename}")
         os.makedirs(gltf_dir, exist_ok=True)
 
         # 匯出 GLTF
@@ -324,7 +331,7 @@ class OBJECT_OT_export_model(bpy.types.Operator):
         )
 
         # 匯出 GLB
-        glb_path = os.path.join(main_dir, f"{filename}.glb")
+        glb_path = os.path.join(gltf_dir, f"{filename}.glb")
         bpy.ops.export_scene.gltf(
             filepath=glb_path,
             export_format='GLB',
@@ -345,7 +352,7 @@ class OBJECT_OT_export_model(bpy.types.Operator):
         )
 
         # 建立 ZIP
-        zip_path = os.path.join(main_dir, f"{filename}_gltf.zip")
+        zip_path = os.path.join(main_dir, f"{filename}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(gltf_dir):
                 for file in files:
