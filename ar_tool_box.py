@@ -69,7 +69,7 @@ def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
                     'IfcDistributionControlElement', 'IfcFlowController',
                     'IfcFurnishingElement', 'IfcPlate', 'IfcSlab', 'IfcDoor',
                     'IfcBuildingElementProxy', 'IfcStair', 'IfcBeam', 'IfcStairFlight',
-                    'IfcMember', 'IfcCovering']
+                    'IfcMember', 'IfcCovering', 'IfcWindow']
     for type_name in listType:
         for ele in ifc.by_type(type_name):
             ele.Name = f'{prefix}_{ele.Tag}'
