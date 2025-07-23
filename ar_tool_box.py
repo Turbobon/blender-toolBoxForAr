@@ -447,9 +447,20 @@ class OBJECT_PT_utility_panel(bpy.types.Panel):
             box3.operator("object.cut_all_objects", icon='MOD_BOOLEAN')
             box3.operator("object.cut_selected_objects", icon='RESTRICT_SELECT_OFF')
 
-        # Export Model
+
         layout.separator()
-        layout.operator("object.export_model", icon='EXPORT')
+
+        # Export Model
+        box4 = layout.box()
+        row = box4.row()
+        row.prop(scene, "export_model_for_app", icon="TRIA_DOWN" if scene.export_model_for_app else "TRIA_RIGHT",
+                 icon_only=True, emboss=False)
+        row.label(text="Export for app")
+
+        if scene.export_model_for_app:
+            box4.prop(scene, "export_filename", text="Files Name")
+            box4.operator("object.export_model", icon='EXPORT')
+
         
 # ========== REGISTER ==========
 classes = (
@@ -487,14 +498,14 @@ def register():
         subtype='FILE_PATH',
     )
     bpy.types.Scene.ar_ifc_prefix = bpy.props.StringProperty(
-    name="Prefix",
-    description="Prefix for renaming elements",
-    default=""
+        name="Prefix",
+        description="Prefix for renaming elements",
+        default=""
     )
     bpy.types.Scene.use_filename_as_prefix = bpy.props.BoolProperty(
-    name="Use FileName as Prefix",
-    description="Use IFC FileName as Elements Prefix",
-    default=True
+        name="Use FileName as Prefix",
+        description="Use IFC FileName as Elements Prefix",
+        default=True
     )
     bpy.types.Scene.ar_ifc_folder_path = bpy.props.StringProperty(
         name="Folder",
@@ -528,10 +539,16 @@ def register():
         unit='LENGTH',
         subtype='DISTANCE'
     )
+    bpy.types.Scene.export_filename = bpy.props.StringProperty(
+        name="FilesName",
+        description="File name for files export",
+        default=""
+    )
     # Toggle fold state
     bpy.types.Scene.accordion_change_props = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.accordion_move_to_origin = bpy.props.BoolProperty(default=True)
     bpy.types.Scene.accordion_axis_cut = bpy.props.BoolProperty(default=True)
+    bpy.types.Scene.export_model_for_app = bpy.props.BoolProperty(default=True)
 
 def unregister():
     for cls in classes:
@@ -551,3 +568,4 @@ def unregister():
     del bpy.types.Scene.accordion_change_props
     del bpy.types.Scene.accordion_move_to_origin
     del bpy.types.Scene.accordion_axis_cut
+    del bpy.types.Scene.export_model_for_app
