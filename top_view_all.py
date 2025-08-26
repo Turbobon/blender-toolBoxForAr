@@ -225,16 +225,34 @@ def main():
     print("Saved:", scn.render.filepath)
 
     # 匯出尺寸資訊
-    size_txt_path = os.path.join(OUTPUT_PATH, f"top_view_size{ts}.txt").replace("\\","/")
+    size_json_path = os.path.join(OUTPUT_PATH, f"top_view_size{ts}.json").replace("\\","/")
     actual_width  = scn.render.resolution_x * scale
     actual_height = scn.render.resolution_y * scale
 
-    with open(size_txt_path, "w", encoding="utf-8") as f:
-        f.write(f"解析度(像素)\n{scn.render.resolution_x} x {scn.render.resolution_y}\n")
-        f.write(f"實際長寬_相片(cm)\n{actual_width*MARGIN_FACTOR:.4f} x {actual_height*MARGIN_FACTOR:.4f}\n")
-        f.write(f"實際長寬(cm)\n{width_cm*MARGIN_FACTOR:.4f} x {height_cm*MARGIN_FACTOR:.4f}\n")
-        f.write(f"像素對應實際長寬的比例(cm/px)\n{scale:.4f}\n")
-    print("Saved:", size_txt_path)
+    output_dict = {
+        "render_resolution": {
+            "unit": "px",
+            "width": scn.render.resolution_x,
+            "height": scn.render.resolution_y
+        },
+        "actual_dimensions_photo": {
+            "unit": "cm",
+            "width": actual_width * MARGIN_FACTOR,
+            "height": actual_height * MARGIN_FACTOR
+        },
+        "actual_dimensions_view-for_check": {
+            "unit": "cm",
+            "width": width_cm * MARGIN_FACTOR,
+            "height": height_cm * MARGIN_FACTOR
+        },
+        "pixel_to_actual_dimensions_ratio": {
+            "unit": "cm/px",
+            "ratio": scale
+        }
+    }
+    with open(size_json_path, "w", encoding="utf-8") as f:
+        json.dump(output_dict, f, ensure_ascii=False, indent=4)
+    print("Saved:", size_json_path)
 
     
 if __name__ == "__main__":
