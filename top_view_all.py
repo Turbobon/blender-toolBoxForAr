@@ -254,6 +254,15 @@ def main():
         json.dump(output_dict, f, ensure_ascii=False, indent=4)
     print("Saved:", size_json_path)
 
+    # 渲染和輸出完成後刪除臨時相機
+    cam_obj = bpy.data.objects.get(CAM_NAME)
+    if cam_obj:
+        bpy.data.objects.remove(cam_obj, do_unlink=True)
+        cam_data = bpy.data.cameras.get(CAM_NAME)
+        if cam_data:
+            bpy.data.cameras.remove(cam_data, do_unlink=True)
+        print(f"✔ 已刪除臨時相機 '{CAM_NAME}'")
+
     
 if __name__ == "__main__":
     main()
