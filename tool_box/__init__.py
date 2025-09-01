@@ -7,7 +7,7 @@ repository.
 
 bl_info = {
     "name": "AR Tool Box",
-    "author": "Bimfm_Annie Sung",
+    "author": "Turbobon",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "View3D > Sidebar > AR Tool Box",

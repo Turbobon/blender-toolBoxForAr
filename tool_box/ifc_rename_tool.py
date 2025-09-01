@@ -8,8 +8,6 @@ when preparing models for AR applications.
 import os
 import bpy
 
-# ========== IFC RENAME TOOL ==========
-
 
 def update_ifc_output(self, context):
     """Automatically update output path when input path changes."""
