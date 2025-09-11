@@ -62,7 +62,7 @@ def update_ifc_output(self, context):
 ## 用ElementId改變物件名稱(主邏輯)
 def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
     if prefix != '':
-        prefix = f'{prefix}'
+        prefix = f'_{prefix}'
     ifc = ifcopenshell.open(file_path)
     listType = ['IfcColumn', 'IfcCurtainWall', 'IfcWall', 'IfcWallStandardCase',
                     'IfcFlowFitting', 'IfcFlowSegment', 'IfcFlowTerminal',
@@ -255,45 +255,28 @@ class OBJECT_OT_cut_selected_objects(bpy.types.Operator):
 ## 以軸線裁切物件(主邏輯)
 def cut_objects(context, only_selected):
     axis = context.scene.cut_axis.lower()  # 'x', 'y', or 'z'
-    direction = context.scene.cut_direction  # '+' or '-'
+    direction = context.scene.cut_direction
     distance = context.scene.cut_distance
 
-    # 計算切割平面
     index_map = {'x': 0, 'y': 1, 'z': 2}
     co = Vector((0, 0, 0))
     co[index_map[axis]] = distance
+
     axis_map = {'x': Vector((1, 0, 0)), 'y': Vector((0, 1, 0)), 'z': Vector((0, 0, 1))}
     no = axis_map[axis]
 
-    # 來源清單：只取 View Layer 中看得到的物件，避免 active 設定失敗
-    viewlayer_objs = {obj.name: obj for obj in bpy.context.view_layer.objects}
-    candidates = context.selected_objects if only_selected else context.scene.objects
-    target_objects = [obj for obj in candidates
-                      if obj.type == 'MESH'
-                      and obj.name in viewlayer_objs
-                      and obj.visible_get()]
+    target_objects = context.selected_objects if only_selected else context.scene.objects
 
-    # 確保先退出任何 Edit Mode
-    if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-        try:
-            bpy.ops.object.mode_set(mode='OBJECT')
-        except RuntimeError:
-            pass
+    for obj in list(target_objects):
+        if obj.type != 'MESH':
+            continue
 
-    # 迭代切割
-    for obj in target_objects:
-        # 1) 反選所有，避免干擾
-        bpy.ops.object.select_all(action='DESELECT')
-
-        # 2) 設為 active + 選取（active 一定要在 View Layer 內）
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
 
-        # 3) 進入 Edit Mode 並全選 mesh
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
 
-        # 4) 執行 bisect
         bpy.ops.mesh.bisect(
             plane_co=co,
             plane_no=no,
@@ -302,9 +285,10 @@ def cut_objects(context, only_selected):
             clear_outer=(direction == '+')
         )
 
-        # 5) 回到 Object Mode，清理選取
         bpy.ops.object.mode_set(mode='OBJECT')
         obj.select_set(False)
+
+    return
 
 
 ## Buttom [匯出.glb、.gltf、.usdz]
