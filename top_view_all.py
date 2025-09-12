@@ -229,11 +229,44 @@ def main():
     actual_width  = scn.render.resolution_x * scale
     actual_height = scn.render.resolution_y * scale
 
+    # === 計算 Blender 世界原點 (0,0,0) 在輸出圖片中的像素與比例位置 ===
+    cam_obj = scn.camera
+    if cam_obj is None or cam_obj.type != 'CAMERA':
+        raise RuntimeError("找不到有效的場景相機，無法計算原點在影像中的位置。")
+
+    cam_data = cam_obj.data
+    res_x = scn.render.resolution_x
+    res_y = scn.render.resolution_y
+
+    # 正交相機：水平/垂直視野（世界單位）
+    # 注意：此公式假設相機垂直於 XY（你的程式就是這樣設的）
+    if cam_data.type != 'ORTHO':
+        raise RuntimeError("目前相機不是 ORTHO，原點→像素的快速公式不適用。")
+
+    if width >= height:
+        Sx = cam_data.ortho_scale
+        Sy = Sx * (res_y / res_x)
+    else:
+        Sy = cam_data.ortho_scale
+        Sx = Sy * (res_x / res_y)
+
+    # 你的相機中心就是 (center_x, center_y)
+    # center_x/center_y 已在上面計算出來（包圍盒中心）
+    x0, y0 = 0.0, 0.0
+
+    # 世界 -> 像素（左下角為 (0,0)）
+    px = ((x0 - center_x) / Sx + 0.5) * res_x
+    py = ((y0 - center_y) / Sy + 0.5) * res_y
+
+    # 比例（0~1），可用來判斷在圖片中的相對位置
+    rx = px / res_x
+    ry = py / res_y
+
     output_dict = {
         "render_resolution": {
             "unit": "px",
-            "width": scn.render.resolution_x,
-            "height": scn.render.resolution_y
+            "width": res_x,
+            "height": res_y
         },
         "actual_dimensions_photo": {
             "unit": "cm",
@@ -248,8 +281,14 @@ def main():
         "pixel_to_actual_dimensions_ratio": {
             "unit": "cm/px",
             "ratio": scale
+        },
+        "origin_in_image": {
+            "pixel": {"x": round(px, 2), "y": round(py, 2)},
+            "ratio": {"x": rx, "y": ry},             # 0~1，(0,0)=左下、(1,1)=右上
+            "ratio_ui_top_left": {"x": rx, "y": 1-ry} # 若 UI 以左上為 (0,0)
         }
     }
+
     with open(size_json_path, "w", encoding="utf-8") as f:
         json.dump(output_dict, f, ensure_ascii=False, indent=4)
     print("Saved:", size_json_path)
