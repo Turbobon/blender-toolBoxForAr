@@ -15,6 +15,8 @@ Z_OFFSET_MODE   = "fixed"           # "auto" 以模型大小自動決定、"fixe
 Z_OFFSET_VALUE  = 2.0              # 當 Z_OFFSET_MODE = "fixed" 時，距離模型 Zmax 的高度(公尺)
 
 RENDER_RESOLUTION = 2000           # 輸出解析度，單位：像素
+RENDER_RESOLUTION_X = 1920           # 輸出解析度，單位：像素
+RENDER_RESOLUTION_Y = 1080           # 輸出解析度，單位：像素
 
 ONLY_SELECTED = False              # True: 只計算選取物件；False: 計算整個場景 
 USE_MODIFIERS = True               # True: 考慮 modifiers/deform；False: 只用原始幾何的 bound_box 
@@ -106,8 +108,21 @@ def create_top_view_camera(center_x, center_y, width, height, z_top):
     # 4) 設為正交/透視與視野
     if USE_ORTHO:
         cam_data.type = 'ORTHO'
+        
         # Ortho Scale 用較長邊，外加邊界
-        ortho_scale = max(width, height) * MARGIN_FACTOR
+        check_x = width / RENDER_RESOLUTION_X
+        check_y = height / RENDER_RESOLUTION_Y
+        if RENDER_RESOLUTION_X >= RENDER_RESOLUTION_Y:
+            if check_x >= check_y:
+                ortho_scale = width * MARGIN_FACTOR
+            else:
+                ortho_scale = check_y * RENDER_RESOLUTION_X * MARGIN_FACTOR
+        else:
+            if check_x >= check_y:
+                ortho_scale = check_x * RENDER_RESOLUTION_Y * MARGIN_FACTOR
+            else:
+                ortho_scale = height * MARGIN_FACTOR
+        
         cam_data.ortho_scale = ortho_scale
     else:
         cam_data.type = 'PERSP'
@@ -148,17 +163,19 @@ def set_render_settings(scn, width, height, engine='BLENDER_WORKBENCH'):
     scn.render.engine = engine  # Workbench 渲染引擎
     scn.view_settings.view_transform = 'Standard'
     scn.view_settings.look = 'High Contrast'
+    check_x = width / RENDER_RESOLUTION_X
+    check_y = height / RENDER_RESOLUTION_Y
     # 根據比例調整解析度，最大值為2000
-    if width >= height:
-        res_x = RENDER_RESOLUTION
-        res_y = int(RENDER_RESOLUTION * height / width)
-        scale = width / RENDER_RESOLUTION
+    if check_x >= check_y:
+        # res_x = RENDER_RESOLUTION_X
+        # res_y = int(RENDER_RESOLUTION_Y * height / width)
+        scale = width * MARGIN_FACTOR / RENDER_RESOLUTION_X
     else:
-        res_y = RENDER_RESOLUTION
-        res_x = int(RENDER_RESOLUTION * width / height)
-        scale = height / RENDER_RESOLUTION
-    scn.render.resolution_x = res_x
-    scn.render.resolution_y = res_y
+        # res_y = RENDER_RESOLUTION_Y
+        # res_x = int(RENDER_RESOLUTION_X * width / height)
+        scale = height * MARGIN_FACTOR / RENDER_RESOLUTION_Y
+    scn.render.resolution_x = RENDER_RESOLUTION_X
+    scn.render.resolution_y = RENDER_RESOLUTION_Y
     scn.render.resolution_percentage = 100  # 100% 輸出，不縮放
 
     # 回傳像素對應實際長寬的比例
@@ -181,11 +198,32 @@ def to_centimeters(value, unit):
     else:  # Blender Unit 或未知
         return value * 100  # 假設 1BU=1m
 
+# ===== 取得 .blend 檔所在資料夾 =====
+def get_base_dir():
+    if bpy.data.filepath:                     # 有存檔
+        return bpy.path.abspath("//")
+    # 尚未存檔時，退回到暫存或使用者家目錄
+    return bpy.app.tempdir or os.path.expanduser("~") + os.sep
 
+# 取得 .blend 檔名（不含副檔名）
+def get_blend_stem():
+    if bpy.data.filepath:
+        return bpy.path.display_name_from_filepath(bpy.data.filepath)
+    return "untitled"
 
 
 # ===== 執行：計算 XYZ 範圍、建立相機 =====
 def main():
+    # 取得 .blend 檔所在資料夾（"//" 代表 .blend 的目錄）
+    base_dir   = get_base_dir()                   # e.g. C:\Users\User\Desktop\folderA\
+    blend_stem = get_blend_stem()                 # e.g. filename
+
+    # 目標資料夾：<base_dir>\<blend_stem>\
+    OUTPUT_PATH = bpy.path.abspath(f"//{blend_stem}") if bpy.data.filepath else os.path.join(base_dir, blend_stem)
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+    # 目標檔案：<base_dir>\<blend_stem>\<blend_stem>.txt
+    size_json_path = os.path.join(OUTPUT_PATH, f"{blend_stem}.txt").replace("\\", "/")
     ext = compute_global_xyz_extents()
     if ext:
         min_x, max_x, min_y, max_y, min_z, max_z, n = ext
@@ -214,18 +252,23 @@ def main():
         raise RuntimeError("在 VIEW_3D 中找不到 WINDOW region。")
     set_viewport_shading(area)
 
-    length_unit = bpy.context.scene.unit_settings.length_unit
+    # 內部運算使用meters
+    length_unit = 'METERS'
+    # length_unit = bpy.context.scene.unit_settings.length_unit
     width_cm         = to_centimeters(width, length_unit)
     height_cm        = to_centimeters(height, length_unit)
     scn = bpy.context.scene
     scale = set_render_settings(scn, width_cm, height_cm)
     ts = datetime.now().strftime("%m%d%H%M")
-    scn.render.filepath = os.path.join(OUTPUT_PATH, f"top_view{ts}.png").replace("\\","/")
+    # scn.render.filepath = os.path.join(OUTPUT_PATH, f"top_view{ts}.png").replace("\\","/")
+    scn.render.filepath = os.path.join(OUTPUT_PATH, f"MF.png").replace("\\","/")
     bpy.ops.render.render(write_still=True)
     print("Saved:", scn.render.filepath)
 
     # 匯出尺寸資訊
-    size_json_path = os.path.join(OUTPUT_PATH, f"top_view_size{ts}.json").replace("\\","/")
+    # 目標檔案：<base_dir>\<blend_stem>\<blend_stem>.json
+    size_json_path = os.path.join(OUTPUT_PATH, f"{blend_stem}.json").replace("\\", "/")
+    # size_json_path = os.path.join(OUTPUT_PATH, f"top_view_size{ts}.json").replace("\\","/")
     actual_width  = scn.render.resolution_x * scale
     actual_height = scn.render.resolution_y * scale
 
@@ -242,8 +285,10 @@ def main():
     # 注意：此公式假設相機垂直於 XY（你的程式就是這樣設的）
     if cam_data.type != 'ORTHO':
         raise RuntimeError("目前相機不是 ORTHO，原點→像素的快速公式不適用。")
+    
+    
 
-    if width >= height:
+    if RENDER_RESOLUTION_X >= RENDER_RESOLUTION_Y:
         Sx = cam_data.ortho_scale
         Sy = Sx * (res_y / res_x)
     else:
@@ -268,24 +313,65 @@ def main():
             "width": res_x,
             "height": res_y
         },
-        "actual_dimensions_photo": {
-            "unit": "cm",
-            "width": actual_width * MARGIN_FACTOR,
-            "height": actual_height * MARGIN_FACTOR
-        },
-        "actual_dimensions_view-for_check": {
-            "unit": "cm",
-            "width": width_cm * MARGIN_FACTOR,
-            "height": height_cm * MARGIN_FACTOR
-        },
-        "pixel_to_actual_dimensions_ratio": {
-            "unit": "cm/px",
-            "ratio": scale
-        },
+        "model_dimensions": [
+            {
+                "unit": "cm",
+                "width": width_cm,
+                "height": height_cm
+            },
+            {
+                "unit": "m",
+                "width": width_cm / 100,
+                "height": height_cm / 100
+            }
+        ],
+        "actual_dimensions_photo": [
+            {
+                "unit": "cm",
+                "width": actual_width,
+                "height": actual_height
+            },
+            {
+                "unit": "m",
+                "width": actual_width / 100,
+                "height": actual_height / 100
+            }
+        ],
+        "actual_dimensions_view-for_check": [
+            {
+                "unit": "cm",
+                "width": width_cm,
+                "height": height_cm
+            },
+            {
+                "unit": "m",
+                "width": width_cm / 100,
+                "height": height_cm / 100
+            }
+        ],
+        "pixel_to_actual_dimensions_ratio": [
+            {
+                "unit": "cm/px",
+                "ratio": scale
+            },
+            {
+                "unit": "m/px",
+                "ratio": scale / 100
+            },
+            {
+                "unit": "PX/m",
+                "ratio": 1 / (scale / 100)
+            }
+        ],
         "origin_in_image": {
-            "pixel": {"x": round(px, 2), "y": round(py, 2)},
-            "ratio": {"x": rx, "y": ry},             # 0~1，(0,0)=左下、(1,1)=右上
-            "ratio_ui_top_left": {"x": rx, "y": 1-ry} # 若 UI 以左上為 (0,0)
+            "pixel": [
+                {"start-at":"左下", "x": round(px, 2), "y": round(py, 2)},
+                {"start-at":"左上", "x": round(px, 2), "y": round(res_y-py, 2)},
+            ],
+            "ratio": [
+                {"start-at":"左下", "x": rx, "y": ry},             # 0~1，(0,0)=左下、(1,1)=右上
+                {"start-at":"左上", "x": rx, "y": 1-ry},           # 0~1，(0,0)=左上、(1,1)=右下
+            ]
         }
     }
 
