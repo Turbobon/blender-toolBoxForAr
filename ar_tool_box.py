@@ -181,12 +181,21 @@ class OBJECT_OT_run_selected_utilities(bpy.types.Operator):
                         print(f"已為物件 {obj.name} 添加材質 {new_material_name}")
                     else:
                         print(f"物件 {obj.name} 已經有材質")
+            self.report({'INFO'}, "已賦予材質至所有物件")
 
         if scene.set_material_to_blend:
-            for mat in bpy.data.materials:
-                mat.use_nodes = False
-                mat.blend_method = 'BLEND'
-            self.report({'INFO'}, "已將所有材質設為 BLEND 模式")
+            count = 0
+            for obj in bpy.context.scene.objects:
+                if obj.type != 'MESH':
+                    continue
+                # 逐個材質槽處理
+                if not obj.data.materials:
+                    continue
+                for mat in obj.data.materials:
+                    if mat:
+                        apply_viewport_color_to_principled(mat, set_alpha=use_alpha)
+                        count += 1
+            self.report({'INFO'}, f"已將 {count} 個材質設為 BLEND 模式")
 
         return {'FINISHED'}
     
@@ -251,6 +260,68 @@ class OBJECT_OT_cut_selected_objects(bpy.types.Operator):
         cut_objects(context, only_selected=True)
         self.report({'INFO'}, "選取物件裁切完成")
         return {'FINISHED'}
+
+## 確保材質有 Principled BSDF 節點
+def ensure_principled(mat: bpy.types.Material):
+    """確保材質節點中有 Principled BSDF，沒有就建立並接到輸出。"""
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nodes = nt.nodes
+    links = nt.links
+
+    # 找 Principled
+    principled = None
+    for n in nodes:
+        if n.type == 'BSDF_PRINCIPLED':
+            principled = n
+            break
+    # 沒有就加一個
+    if not principled:
+        principled = nodes.new("ShaderNodeBsdfPrincipled")
+        principled.location = (0, 0)
+
+    # 找輸出
+    output = None
+    for n in nodes:
+        if n.type == 'OUTPUT_MATERIAL':
+            output = n
+            break
+    if not output:
+        output = nodes.new("ShaderNodeOutputMaterial")
+        output.location = (300, 0)
+
+    # 若未連線，連 Principled -> Output
+    if not principled.outputs["BSDF"].is_linked:
+        links.new(principled.outputs["BSDF"], output.inputs["Surface"])
+
+    return principled
+
+## 把 Viewport Display 顏色套用到 Principled
+def apply_viewport_color_to_principled(mat: bpy.types.Material, set_alpha=True):
+    """把 Viewport Display 顏色(含透明度)塞到 Principled Base Color / Alpha。"""
+    if mat is None:
+        return
+
+    # Solid 模式顏色來源：Viewport Display 顏色（material.diffuse_color RGBA）
+    # 注意：若你把視窗設定為顯示 Object 顏色，則會來自 obj.color（下方備註有寫）
+    r, g, b, a = mat.diffuse_color
+
+    principled = ensure_principled(mat)
+
+    # Base Color 用 RGB，Alpha 另行設定
+    principled.inputs["Base Color"].default_value = (r, g, b, 1.0)
+
+    if set_alpha:
+        principled.inputs["Alpha"].default_value = a    # 部分狀況下，Alpha 設定 1.0 效果不變 
+        # 讓透明度在視窗可見（Eevee）
+        mat.blend_method = 'BLEND'      # 也可用 'HASHED' 對半透明陰影友好
+        mat.shadow_method = 'HASHED'    # 透明陰影
+        mat.use_backface_culling = False
+    else:
+        principled.inputs["Alpha"].default_value = 1.0
+        mat.blend_method = 'OPAQUE'
+        mat.shadow_method = 'OPAQUE'
+
 
 ## 以軸線裁切物件(主邏輯)
 def cut_objects(context, only_selected):
