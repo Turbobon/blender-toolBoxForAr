@@ -12,7 +12,7 @@ MAKE_ACTIVE     = True             # 建立後設為目前場景的 active camer
 USE_ORTHO       = True             # 使用正交相機；若想用透視改成 False
 MARGIN_FACTOR   = 1.05             # Ortho Scale 外擴比例(5%邊界)
 Z_OFFSET_MODE   = "fixed"           # "auto" 以模型大小自動決定、"fixed" 使用固定數值
-Z_OFFSET_VALUE  = 2.0              # 當 Z_OFFSET_MODE = "fixed" 時，距離模型 Zmax 的高度(公尺)
+Z_OFFSET_VALUE  = 2.0              # 當 Z_OFFSET_MODE = "fixed" 時，距離模型 Zmax 的高度(公尺) [負數表示在模型內部]
 
 RENDER_RESOLUTION = 2000           # 輸出解析度，單位：像素
 RENDER_RESOLUTION_X = 1920           # 輸出解析度，單位：像素
@@ -21,6 +21,15 @@ RENDER_RESOLUTION_Y = 1080           # 輸出解析度，單位：像素
 ONLY_SELECTED = False              # True: 只計算選取物件；False: 計算整個場景 
 USE_MODIFIERS = True               # True: 考慮 modifiers/deform；False: 只用原始幾何的 bound_box 
 INCLUDE_HIDDEN = False             # False: 略過在視圖中隱藏的物件
+
+ADD_ORIGIN_CONE = True                  # True: 在 (0,0) 放一個錐體； False: 不放錐體
+ORIGIN_CONE_SIZE = 45                   # 錐體大小，單位：Pixel
+ORIGIN_CONE_NAME = "OriginCone"         # 原點指示錐體名稱
+ORIGIN_CONE_Z_MODE = "auto_top"         # "auto_top": 放在模型頂端上方、"zero": 放在 Z=0
+ORIGIN_CONE_Z_OFFSET = 0.1              # 當 ORIGIN_CONE_Z_MODE = "auto_top" 時，錐體離模型頂端的高度  [負數表示在模型內部 約Z_OFFSET_VALUE+0.5]
+DELETE_ORIGIN_CONE_AFTER_RENDER = True  # True: 渲染後刪除錐體； False: 渲染後保留錐體
+ORIGIN_CONE_DIRECTION = "+y"            # 錐體頂端面向 : 可選 "+x"(90), "-x"(-90), "+y"(180), "-y"(0)
+ORIGIN_CONE_VIEW_COLOR = (1.0, 0.0, 0.0, 1.0) # 錐體顏色 (R,G,B,A)，紅色
 
 
 # ===== 取得場景中要處理的目標物件（根據是否只取選取物件/是否包含隱藏物件） =====
@@ -211,6 +220,57 @@ def get_blend_stem():
         return bpy.path.display_name_from_filepath(bpy.data.filepath)
     return "untitled"
 
+# ===== 建立與刪除原點指示錐體 =====
+def create_origin_cone(cone_size, z_pos):
+    # 先確保同名物件不存在
+    old = bpy.data.objects.get(ORIGIN_CONE_NAME)
+    if old:
+        bpy.data.objects.remove(old, do_unlink=True)
+
+    # 依據 ORIGIN_CONE_DIRECTION 設定 rotationZ
+    dir_map = {
+        "+x":  90,
+        "-x": -90,
+        "+y": 180,
+        "-y":   0
+    }
+    rot_z_deg = dir_map.get(ORIGIN_CONE_DIRECTION, 0)  # 預設 0
+
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=3,
+        radius1=cone_size/2,
+        radius2=0.0,
+        depth=cone_size,
+        enter_editmode=False,
+        align='WORLD',
+        location=(0.0, 0.0, z_pos),
+        rotation=(math.radians(90), 0.0, math.radians(rot_z_deg))
+    )
+    cone = bpy.context.active_object
+    cone.name = ORIGIN_CONE_NAME
+
+    # === 建立材質並設定顏色 ===
+    mat_name = ORIGIN_CONE_NAME + "_Mat"
+    mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(mat_name)
+    mat.use_nodes = False                     # 關閉節點
+    mat.diffuse_color = ORIGIN_CONE_VIEW_COLOR  # 對應 Viewport Display > Color
+    # mat.use_nodes = True
+    # bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    # if bsdf:
+    #     bsdf.inputs["Base Color"].default_value = ORIGIN_CONE_COLOR
+    # 指派材質給錐體
+    if len(cone.data.materials) == 0:
+        cone.data.materials.append(mat)
+    else:
+        cone.data.materials[0] = mat
+
+    return cone
+
+def delete_origin_cone():
+    cone = bpy.data.objects.get(ORIGIN_CONE_NAME)
+    if cone:
+        bpy.data.objects.remove(cone, do_unlink=True)
+
 
 # ===== 執行：計算 XYZ 範圍、建立相機 =====
 def main():
@@ -224,26 +284,30 @@ def main():
 
     # 目標檔案：<base_dir>\<blend_stem>\<blend_stem>.txt
     size_json_path = os.path.join(OUTPUT_PATH, f"{blend_stem}.txt").replace("\\", "/")
+    
+    # 計算 XYZ 範圍
     ext = compute_global_xyz_extents()
-    if ext:
-        min_x, max_x, min_y, max_y, min_z, max_z, n = ext
-        center_x = 0.5 * (min_x + max_x)
-        center_y = 0.5 * (min_y + max_y)
-        width    = max_x - min_x
-        height   = max_y - min_y
-
-        # 自動決定相機離物件頂端高度（正交相機其實高度不影響取景，但留一點安全距離）
-        if Z_OFFSET_MODE == "auto":
-            # 用最大邊的 0.5 作為高度緩衝，避免太貼近（你也可以改為 0.2、1.0 等）
-            z_top = max_z + max(width, height) * 0.5
-        else:
-            z_top = max_z + float(Z_OFFSET_VALUE)
-
-        create_top_view_camera(center_x, center_y, width, height, z_top)
-    else:
+    if not ext:
         print("✘ 無法建立相機（沒有幾何範圍）。")
         return
+    min_x, max_x, min_y, max_y, min_z, max_z, n = ext
+    center_x = 0.5 * (min_x + max_x)
+    center_y = 0.5 * (min_y + max_y)
+    width    = max_x - min_x
+    height   = max_y - min_y
 
+    
+    
+    # 自動決定相機離物件頂端高度（正交相機其實高度不影響取景，但留一點安全距離）
+    if Z_OFFSET_MODE == "auto":
+        # 用最大邊的 0.5 作為高度緩衝，避免太貼近（你也可以改為 0.2、1.0 等）
+        z_top = max_z + max(width, height) * 0.5
+    else:
+        z_top = max_z + float(Z_OFFSET_VALUE)
+
+    create_top_view_camera(center_x, center_y, width, height, z_top)
+    
+    # 設定並執行渲染
     area  = next((a for a in bpy.context.screen.areas if a.type == 'VIEW_3D'), None)
     if not area:
         raise RuntimeError("找不到 VIEW_3D 視窗")
@@ -259,6 +323,16 @@ def main():
     height_cm        = to_centimeters(height, length_unit)
     scn = bpy.context.scene
     scale = set_render_settings(scn, width_cm, height_cm)
+
+    cone_size = ORIGIN_CONE_SIZE / 100 * scale
+    # 在截圖前於 (0,0) 放一個錐體（不影響邊界計算，因為放在這之後才建立）
+    if ADD_ORIGIN_CONE:
+        if ORIGIN_CONE_Z_MODE == "auto_top":
+            cone_z = max_z + ORIGIN_CONE_Z_OFFSET
+        else:  # "zero"
+            cone_z = 0.0
+        cone_obj = create_origin_cone(cone_size, cone_z)
+
     ts = datetime.now().strftime("%m%d%H%M")
     # scn.render.filepath = os.path.join(OUTPUT_PATH, f"top_view{ts}.png").replace("\\","/")
     scn.render.filepath = os.path.join(OUTPUT_PATH, f"MF.png").replace("\\","/")
@@ -285,8 +359,6 @@ def main():
     # 注意：此公式假設相機垂直於 XY（你的程式就是這樣設的）
     if cam_data.type != 'ORTHO':
         raise RuntimeError("目前相機不是 ORTHO，原點→像素的快速公式不適用。")
-    
-    
 
     if RENDER_RESOLUTION_X >= RENDER_RESOLUTION_Y:
         Sx = cam_data.ortho_scale
@@ -387,6 +459,11 @@ def main():
         if cam_data:
             bpy.data.cameras.remove(cam_data, do_unlink=True)
         print(f"✔ 已刪除臨時相機 '{CAM_NAME}'")
+    
+    # (可選）刪除錐體與臨時相機
+    cone_obj = bpy.data.objects.get(ORIGIN_CONE_NAME)
+    if DELETE_ORIGIN_CONE_AFTER_RENDER and cone_obj:
+        bpy.data.objects.remove(cone_obj, do_unlink=True)
 
     
 if __name__ == "__main__":
