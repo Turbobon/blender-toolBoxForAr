@@ -62,17 +62,17 @@ def update_ifc_output(self, context):
 ## 用ElementId改變物件名稱(主邏輯)
 def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
     if prefix != '':
-        prefix = f'{prefix}'
+        prefix = f'{prefix}_'
     ifc = ifcopenshell.open(file_path)
     listType = ['IfcColumn', 'IfcCurtainWall', 'IfcWall', 'IfcWallStandardCase',
                     'IfcFlowFitting', 'IfcFlowSegment', 'IfcFlowTerminal',
                     'IfcDistributionControlElement', 'IfcFlowController',
                     'IfcFurnishingElement', 'IfcPlate', 'IfcSlab', 'IfcDoor',
                     'IfcBuildingElementProxy', 'IfcStair', 'IfcBeam', 'IfcStairFlight',
-                    'IfcMember', 'IfcCovering', 'IfcWindow']
+                    'IfcMember', 'IfcCovering', 'IfcWindow', 'IfcRoof']
     for type_name in listType:
         for ele in ifc.by_type(type_name):
-            ele.Name = f'{prefix}_{ele.Tag}'
+            ele.Name = f'{prefix}{ele.Tag}'
     ifc.write(output_path)
 
 ## Buttom [匯出以ElementId命名的IFC]
@@ -138,7 +138,7 @@ class OBJECT_OT_batch_rename_ifc_folder(bpy.types.Operator):
                     output_path = os.path.join(root, os.path.splitext(file)[0] + "_id.ifc")
 
                     try:
-                        prefix = os.path.splitext(file)[0] if use_prefix else ""
+                        prefix = os.path.splitext(file)[0] if use_prefix else "ALL"
                         name_ifc_elements_by_tag(ifcopenshell, input_path, output_path, prefix)
                         count += 1
                     except Exception as e:
