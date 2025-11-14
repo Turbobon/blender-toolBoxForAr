@@ -15,37 +15,44 @@ import zipfile
 from mathutils import Vector
 
 # ========== Z ROTATION TOOL ==========
-def set_origin_and_rotate_z(obj, angle):
+def set_origin_and_move_then_rotate(obj, angle, x, y):
     bpy.context.view_layer.objects.active = obj # 將當前物件設為 active，並選取它
     obj.select_set(True)
+    bpy.ops.object.origin_set(type='ORIGIN_CURSOR') # 將 origin 設為 3D 游標
+    obj.location.x += x
+    obj.location.y += y
     bpy.ops.object.origin_set(type='ORIGIN_CURSOR') # 將 origin 設為 3D 游標
     obj.rotation_euler.z += angle
     obj.select_set(False) # 清除選取（避免干擾）
 
 ## Buttom [將選取物件的RotationZ都加上一個數值]
-class OBJECT_OT_add_rotation_z_selected(bpy.types.Operator):
-    bl_idname = "object.add_rotation_z_selected"
-    bl_label = "Rotate Selected"
+class OBJECT_OT_move_then_rotate_selected(bpy.types.Operator):
+    bl_idname = "object.move_then_rotate_selected"
+    bl_label = "Move Selected"
     def execute(self, context):
-        angle = context.scene.ar_z_rotation_angle
+        angle = context.scene.ar_revit_proj_faceNorth
+        y = -context.scene.ar_revit_proj_NS
+        x = -context.scene.ar_revit_proj_EW
         count = 0
         for obj in context.selected_objects:
             if obj.type == 'MESH':
-                set_origin_and_rotate_z(obj, angle)
+                set_origin_and_move_then_rotate(obj, angle, x, y)
                 count += 1
         self.report({'INFO'}, f"已套用到 {count} 個選取物件")
         return {'FINISHED'}
 
 ## Buttom [將所有物件的RotationZ都加上一個數值]
-class OBJECT_OT_add_rotation_z_all(bpy.types.Operator):
-    bl_idname = "object.add_rotation_z_all"
-    bl_label = "Rotate All"
+class OBJECT_OT_move_then_rotate_all(bpy.types.Operator):
+    bl_idname = "object.move_then_rotate_all"
+    bl_label = "Move All"
     def execute(self, context):
-        angle = context.scene.ar_z_rotation_angle
+        angle = context.scene.ar_revit_proj_faceNorth
+        y = -context.scene.ar_revit_proj_NS
+        x = -context.scene.ar_revit_proj_EW
         count = 0
         for obj in bpy.context.scene.objects:
             if obj.type == 'MESH':
-                set_origin_and_rotate_z(obj, angle)
+                set_origin_and_move_then_rotate(obj, angle, x, y)
                 count += 1
         self.report({'INFO'}, f"已套用到 {count} 個全部物件")
         return {'FINISHED'}
@@ -193,7 +200,7 @@ class OBJECT_OT_run_selected_utilities(bpy.types.Operator):
                     continue
                 for mat in obj.data.materials:
                     if mat:
-                        apply_viewport_color_to_principled(mat, set_alpha=use_alpha)
+                        apply_viewport_color_to_principled(mat, set_alpha=True)
                         count += 1
             self.report({'INFO'}, f"已將 {count} 個材質設為 BLEND 模式")
 
@@ -473,18 +480,20 @@ class OBJECT_PT_rename_ifc(bpy.types.Panel):
         layout.operator("object.batch_rename_ifc_folder", icon='FILE_REFRESH')
 
 # ========== Z ROTATION UI PANEL ==========
-class OBJECT_PT_change_rotation_z(bpy.types.Panel):
-    bl_label = "Change Rotation Z"
-    bl_idname = "OBJECT_PT_change_rotation_z"
+class OBJECT_PT_adjust_proj_base_point(bpy.types.Panel):
+    bl_label = "Adjust Proj Base Point"
+    bl_idname = "OBJECT_PT_adjust_proj_base_point"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "AR Tool Box"
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(context.scene, "ar_z_rotation_angle")
-        layout.operator("object.add_rotation_z_selected", icon='STICKY_UVS_LOC')
-        layout.operator("object.add_rotation_z_all", icon='STICKY_UVS_DISABLE')
+        layout.prop(context.scene, "ar_revit_proj_faceNorth")
+        layout.prop(context.scene, "ar_revit_proj_NS")
+        layout.prop(context.scene, "ar_revit_proj_EW")
+        layout.operator("object.move_then_rotate_selected", icon='STICKY_UVS_LOC')
+        layout.operator("object.move_then_rotate_all", icon='STICKY_UVS_DISABLE')
 
 # ========== Utility Changes UI PANEL ==========
 class OBJECT_PT_utility_panel(bpy.types.Panel):
@@ -552,8 +561,8 @@ class OBJECT_PT_utility_panel(bpy.types.Panel):
         
 # ========== REGISTER ==========
 classes = (
-    OBJECT_OT_add_rotation_z_selected,
-    OBJECT_OT_add_rotation_z_all,
+    OBJECT_OT_move_then_rotate_selected,
+    OBJECT_OT_move_then_rotate_all,
     OBJECT_OT_rename_ifc_elements,
     OBJECT_OT_batch_rename_ifc_folder,
     OBJECT_OT_run_selected_utilities,
@@ -562,19 +571,33 @@ classes = (
     OBJECT_OT_cut_selected_objects,
     OBJECT_OT_export_model,
     OBJECT_PT_rename_ifc,
-    OBJECT_PT_change_rotation_z,
+    OBJECT_PT_adjust_proj_base_point,
     OBJECT_PT_utility_panel,
 )
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.ar_z_rotation_angle = bpy.props.FloatProperty(
-        name="Z",
-        description="Z Axis Rotation in Degrees",
+    bpy.types.Scene.ar_revit_proj_faceNorth = bpy.props.FloatProperty(
+        name="Angle Face North",
+        description="Rotation Around Z Axis",
         default=0.0,
         subtype='ANGLE',
         unit='ROTATION'
+    )
+    bpy.types.Scene.ar_revit_proj_NS = bpy.props.FloatProperty(
+        name="Project NS",
+        description="Move Negative Y Length",
+        default=0.0,
+        subtype='DISTANCE',
+        unit='LENGTH'
+    )
+    bpy.types.Scene.ar_revit_proj_EW = bpy.props.FloatProperty(
+        name="Project EW",
+        description="Move Negative X Length",
+        default=0.0,
+        subtype='DISTANCE',
+        unit='LENGTH'
     )
     bpy.types.Scene.ar_ifc_input_path = bpy.props.StringProperty(
         name="Input",
@@ -641,7 +664,9 @@ def register():
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
-    del bpy.types.Scene.ar_z_rotation_angle
+    del bpy.types.Scene.ar_revit_proj_faceNorth
+    del bpy.types.Scene.ar_revit_proj_NS
+    del bpy.types.Scene.ar_revit_proj_EW
     del bpy.types.Scene.ar_ifc_input_path
     del bpy.types.Scene.ar_ifc_output_path
     del bpy.types.Scene.ar_ifc_prefix

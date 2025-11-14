@@ -33,7 +33,7 @@ def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
         Optional prefix appended before each Tag.
     """
     if prefix != '':
-        prefix = f'_{prefix}'
+        prefix = f'{prefix}_'
     ifc = ifcopenshell.open(file_path)
     # 指定需要處理的 IFC 元件類型
     listType = [
@@ -47,7 +47,7 @@ def name_ifc_elements_by_tag(ifcopenshell, file_path, output_path, prefix):
     # 迭代所有指定類型並改名
     for type_name in listType:
         for ele in ifc.by_type(type_name):
-            ele.Name = f'{prefix}_{ele.Tag}'
+            ele.Name = f'{prefix}{ele.Tag}'
     ifc.write(output_path)
 
 

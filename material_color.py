@@ -46,7 +46,7 @@ def apply_viewport_color_to_principled(mat: bpy.types.Material, set_alpha=True):
     principled = ensure_principled(mat)
 
     # Base Color 用 RGB，Alpha 另行設定
-    principled.inputs["Base Color"].default_value = (r, g, b, a)
+    principled.inputs["Base Color"].default_value = (r, g, b, 1.0)
 
     if set_alpha:
         principled.inputs["Alpha"].default_value = a
