@@ -1,7 +1,7 @@
 bl_info = {
     "name": "QR Cone Tool",
     "author": "ChatGPT + SUNG",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (4, 0, 0),
     "location": "View3D > N panel > QR Cones",
     "description": "Place cones with fixed rotations, edit them, and export to JSON",
@@ -29,10 +29,10 @@ QR_COLLECTION_NAME = "QR_Cones"
 # Face value to rotation mapping (degrees)
 # key: dropdown value (1~4), value: rotation Z in degrees
 FACE_ROTATIONS_DEG = {
-    1: 0.0,    # up
-    2: -90.0,  # right
-    3: 180.0,  # down
-    4: 90.0,   # left
+    1: 180.0,    # up
+    2: 90.0,  # right
+    3: 0.0,  # down
+    4: -90.0,   # left
 }
 
 # Blender units assumed as centimeters; convert to inches
@@ -45,7 +45,7 @@ def get_scene_face_enum_items():
         ("1", "Up", "Face up (0°)"),
         ("2", "Right", "Face right (-90°)"),
         ("3", "Down", "Face down (180°)"),
-        ("4", "Left", "Face down (90°)"),
+        ("4", "Left", "Face left (90°)"),
     ]
 
 
@@ -160,7 +160,7 @@ def add_qr_cone_at_location(context, location):
     # Ensure the cone is in the QR_Cones collection
     qr_coll = get_or_create_qr_collection(scene)
 
-    # Option: keep the object only in QR collection (cleaner)
+    # Keep object only in QR collection (cleaner)
     for c in list(cone.users_collection):
         c.objects.unlink(cone)
     qr_coll.objects.link(cone)
@@ -171,13 +171,16 @@ def add_qr_cone_at_location(context, location):
 # ------------------------------------------------------------------------
 
 class OBJECT_OT_qr_cone_place(bpy.types.Operator):
-    """Click once in 3D View (top view) to place ONE cone"""
+    """Click once in 3D View to place ONE cone (auto switch to TOP view)"""
     bl_idname = "object.qr_cone_place"
     bl_label = "Add Cone (Click once)"
     bl_options = {'REGISTER', 'UNDO'}
 
     def invoke(self, context, event):
         if context.area.type == 'VIEW_3D':
+            # Switch current 3D view to TOP view (orthographic)
+            bpy.ops.view3d.view_axis('INVOKE_DEFAULT', type='TOP')
+
             context.window_manager.modal_handler_add(self)
             self.report({'INFO'}, "Left click once in TOP view to add a cone. ESC to cancel.")
             return {'RUNNING_MODAL'}
@@ -254,8 +257,8 @@ class OBJECT_OT_qr_cone_export_json(bpy.types.Operator, ExportHelper):
 
             # World location
             loc_world = obj.matrix_world.translation
-            x_inch = loc_world.x * METER_TO_INCH
-            y_inch = loc_world.y * METER_TO_INCH
+            x_inch = loc_world.x * CENTIMETER_TO_INCH
+            y_inch = loc_world.y * CENTIMETER_TO_INCH
 
             # Convert rotation.z to face index (1~4)
             face_idx = rotation_to_face_index(obj.rotation_euler.z)
